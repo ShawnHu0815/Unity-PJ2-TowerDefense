@@ -1,0 +1,226 @@
+@startuml
+skinparam titleFontSize 40
+skinparam titleFontName "Arial"
+skinparam titleFontBold true
+
+title 塔防游戏类图
+left to right direction
+
+node Game{
+}
+
+Game *-- MainMenuScene
+Game *-- MainScene
+
+node MainScene{
+}
+
+MainScene *-- GameManagerObjcet空物体
+MainScene *-- MainCameraObject
+MainScene "1" o--"0..*" EnemyObject
+MainScene "1" o--"0..*" WayPointsObjcet
+MainScene "1" o--"0..*" MapCubeObject
+MainScene "1" o--"0..*" TurretObject
+MainScene "1" o--"0..*" BulletObject 
+
+node GameManagerObjcet空物体{
+}
+
+GameManagerObjcet空物体 *-- BuildManager
+GameManagerObjcet空物体 *-- EnemySpawner
+GameManagerObjcet空物体 *-- GameManager
+
+class GameManager {
+  -GameObject endUI  // 游戏结束UI
+  -Text endMessage  // 游戏结束信息
+  -static GameManager Instance // 单例模式
+  -EnemySpawner enemySpawner  // 敌人生成器
+  +void Awake()  // 初始化：GM实例，敌人生成器，游戏结束信息
+  +void Win()  // 游戏胜利
+  +void Fail() // 游戏失败
+  +void OnButtonRetry() // 按下重试按钮逻辑
+  +void OnButtonMenu()  // 按下菜单按钮逻辑
+}
+
+GameManager <-- EnemySpawner
+
+class EnemySpawner {
+  +static int CountEnemyAlive  // 存活的敌人数量
+  +Wave[] waves  // 敌人波数信息
+  +Transform START  // 敌人生成点
+  +float waveRate  // 每波敌人时间间隔
+  -Coroutine coroutine // 协程
+  +void Start() // 启动协程
+  +void Stop()  // 停止协程
+  -IEnumerator SpawnEnemy()  // 生成敌人的协程
+}
+
+class Wave {
+  +GameObject enemyPrefab // 敌人预制体
+  +int count // 敌人数量
+  +float rate // 生成敌人的时间间隔
+}
+
+EnemySpawner *- Wave
+
+class BuildManager {
+  +TurretData laserTurretData // 激光炮塔数据
+  +TurretData missileTurretData // 导弹炮塔数据
+  +TurretData standardTurretData // 标准炮塔数据
+  -TurretData selectedTurretData // 当前选择的炮塔
+  -MapCubeController selectedMapCube // 当前选择的方块
+  +Text moneyText // 余额文本框
+  +int money // 余额
+  +Animator moneyAnimator // 金钱动画
+  +GameObject upgradeCanvas // 升级面板游戏物体
+  -Animator upgradeCansvasAnimator // 升级面板动画
+  +Button buttonUpgrade // 升级按钮
+  +void Start() 
+  -void ChangeMoney(int change) // 更新余额
+  +void Update() // 检测鼠标点击，处理炮塔的建造、升级、销毁
+  +void OnLaserSelected(bool isOn) // 选择了激光炮塔
+  +void OnMissileSelected(bool isOn) // 选择了导弹炮塔
+  +void OnStandardSelected(bool isOn) // 选择了标准炮塔
+  -void ShowUpgradeUI(Vector3 pos, bool isDisableUpgrade) // 显示升级面板
+  -IEnumerator HideUpgradeUI() // 隐藏升级面板
+  +void OnUpgradeButtonDown() // 按下升级按钮逻辑
+  +void OnDestoryButtonDown() // 按下销毁按钮逻辑
+}
+
+BuildManager *-- TurretData
+BuildManager <-- MapCubeController
+
+class TurretData {
+  +GameObject turretPrefab // 炮塔预制体
+  +int cost // 建造价格
+  +GameObject turretUpgradedPrefab  // 升级后的炮塔预制体
+  +int costUpgraded  // 升级价格
+  +TurretType type  // 炮塔类型
+}
+
+TurretData *- TurretType
+
+enum TurretType {
+  LaserTurret  // 激光炮塔
+  MissileTurret  // 导弹炮塔
+  StandardTurret  // 标准炮塔
+}
+
+node BulletObject{
+}
+
+BulletObject *-- BulletController
+
+class BulletController {
+  +int damage // 伤害值
+  +float speed // 子弹速度
+  +GameObject explosionEffectPrefab // 爆炸特效预制体
+  -Transform target // 目标的变换组件
+  +void SetTarget(Transform _target) // 设置目标
+  +void Update() // 每帧移动逻辑
+  +void OnTriggerEnter(Collider col) // 与敌人碰撞逻辑
+  -void Die() // 销毁逻辑
+}
+
+node EnemyObject{
+}
+
+EnemyObject *-- EnemyController
+
+class EnemyController {
+  +float speed // 移动速度
+  +float hp // 当前血量
+  -float totalHp // 总血量
+  +GameObject explosionEffectPrefab // 爆炸特效预制体
+  -Slider hpSlider // 血条
+  -Transform[] positions // 路径点
+  -int index // 当前路径点索引
+  +void Start() // 初始化
+  +void Update() // 每帧调用移动
+  -void Move() // 敌人移动逻辑
+  -void ReachDestination() // 到达终点逻辑
+  +void TakeDamage(float damage) // 受到伤害
+  -void Die() // 死亡时逻辑
+  -void OnDestroy() // 销毁时处理
+}
+
+EnemyController <- WayPoints
+
+node MainMenuScene{
+}
+
+node GameMenuObject{
+}
+MainMenuScene *-- GameMenuObject
+GameMenuObject *-- GameMenu
+
+class GameMenu {
+  +void OnStartButton() // 按下开始按钮逻辑
+  +void OnQuitButton() // 按下退出按钮逻辑
+}
+
+node MapCubeObject{
+}
+
+MapCubeObject *-- MapCubeController
+
+class MapCubeController {
+  +bool isUpgraded  // 当前炮塔是否已经升级
+  +TurretData turretData  // 当前炮塔数据
+  +GameObject turretGo // 当前炮塔的游戏物体
+  +GameObject buildEffect  // 建造特效
+  -Renderer renderer  // 渲染组件
+  +void Start()  // 初始化渲染组件
+  +void BuildTurret(TurretData turretData) // 建造炮塔逻辑
+  +void UpgradeTurret()  // 升级炮塔逻辑
+  +void DestroyTurret()  // 拆除炮塔逻辑
+  +void OnMouseEnter()  // 鼠标进入变色
+  +void OnMouseExit()  // 鼠标离开变色
+}
+
+node TurretObject{
+}
+
+TurretObject *-- TurretController
+
+class TurretController {
+  -List<GameObject> enemies  // 敌人列表
+  +float attackRateTime // 攻击间隔
+  -float timer // 计时器
+  +GameObject bulletPrefab // 子弹预制体
+  +Transform firePosition // 发射位置变换组件
+  +Transform head // 炮塔头部变换组件
+  +bool useLaser // 是否使用激光
+  +float damageRate  // 激光伤害
+  +LineRenderer laserRenderer  // 激光渲染器
+  +GameObject laserEffect  // 激光特效
+  +void Start()  // 初始化计时器
+  +void Update()  // 每帧调用攻击逻辑
+  -void Attack()  // 攻击逻辑，生成子弹
+  -void UpdateEnemies()  // 更新敌人列表，清除已死亡敌人
+}
+
+node MainCameraObject{
+}
+
+MainCameraObject *-- ViewController
+
+class ViewController {
+  +float speed // 摄像机移动速度
+  +float mouseSpeed  // 鼠标滚轮速度
+  +void Update() // 摄像机移动逻辑
+}
+
+node WayPointsObjcet{
+}
+node wayPointObject{
+}
+WayPointsObjcet "1" o-- "1..*" wayPointObject
+WayPointsObjcet *-- WayPoints
+
+class WayPoints {
+  +static Transform[] positions  // 路径点
+  +void Awake()  // 初始化路径点
+}
+
+@enduml

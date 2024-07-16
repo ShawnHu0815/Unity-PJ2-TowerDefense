@@ -1,0 +1,641 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
+
+public class BuildManager : MonoBehaviour
+{   
+    public TurretData laserTurretData;
+    public TurretData missileTurretData;
+    public TurretData standardTurretData;
+    
+    // 当前选择要建造的炮塔
+    private TurretData selectedTurretData;
+    // 当前选择的场景中的方块
+    private MapCubeController selectedMapCube;
+    
+    public Text moneyText;
+    public int money = 1000;
+    public Animator moneyAnimator;
+    
+    public GameObject upgradeCanvas;
+    private Animator upgradeCansvasAnimator;
+    public Button buttonUpgrade;
+
+    private void Start()
+    {
+        upgradeCansvasAnimator = upgradeCanvas.GetComponent<Animator>();
+    }
+
+    private void ChangeMoney(int change = 0)
+    {
+        money += change;
+        moneyText.text = "余额￥" + money;
+    }
+    
+    
+    private void Update()
+    {   
+        // 鼠标左键按下
+        if (Input.GetMouseButtonDown(0))
+        {   
+            // 检测是否点击在UI上
+            if (EventSystem.current.IsPointerOverGameObject() == false)
+            {
+                // 建造炮台的逻辑
+                // 构造一个射线，从摄像机发射到鼠标点击的位置
+                Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+                // 射线与MapCube层发生碰撞，返回碰撞信息
+                RaycastHit hit;
+                bool isCollider = Physics.Raycast(ray, out hit, 1000, LayerMask.GetMask("MapCube"));
+                if (isCollider)
+                {
+                    MapCubeController mapCube = hit.collider.GetComponent<MapCubeController>(); // 获取碰撞到的cube，即鼠标点击的cube
+                    // 若当前cube上没有炮台，并且当前选中了炮台，则可以建造炮台
+                    if (selectedTurretData != null && mapCube.turretGo == null)
+                    {
+                        // 若当前钱足够
+                        if (money > selectedTurretData.cost)
+                        {  
+                            mapCube.BuildTurret(selectedTurretData);
+                            ChangeMoney(-selectedTurretData.cost);
+                        }
+                        // 若当前钱不够
+                        else 
+                        {
+                            moneyAnimator.SetTrigger("flicker");
+                        }
+                    }
+                    // 若当前cube上有炮台
+                    else if(mapCube.turretGo != null)
+                    {   
+                        // 若当前cube是选中的cube，并且升级面板是激活状态
+                        if (mapCube == selectedMapCube && upgradeCanvas.activeInHierarchy)
+                        {
+                            // 关闭升级面板
+                            StartCoroutine(HideUpgradeUI());
+                        }
+                        else
+                        {   
+                            // 显示升级面板
+                            ShowUpgradeUI(mapCube.transform.position, mapCube.isUpgraded);
+                        }
+                        selectedMapCube = mapCube;
+                    }
+                }
+                
+            }
+            
+        }
+    }
+
+    public void OnLaserSelected(bool isOn)
+    {
+        if (isOn)
+        {
+            selectedTurretData = laserTurretData;
+        }
+    }
+    
+    public void OnMissileSelected(bool isOn)
+    {
+        if (isOn)
+        {
+            selectedTurretData = missileTurretData;
+        }
+    }
+    
+    public void OnStandardSelected(bool isOn)
+    {
+        if (isOn)
+        {
+            selectedTurretData = standardTurretData;
+        }
+    }
+    
+    // 显示升级面板
+    void ShowUpgradeUI(Vector3 pos, bool isDisableUpgrade = false)
+    {
+        StopCoroutine("HideUpgradeUI");
+        upgradeCanvas.SetActive(false);
+        upgradeCanvas.SetActive(true);
+        upgradeCanvas.transform.position = pos + new Vector3(0,3,1);
+        buttonUpgrade.interactable = !isDisableUpgrade;
+    }
+
+    // 隐藏升级面板
+    IEnumerator HideUpgradeUI()
+    {
+        upgradeCansvasAnimator.SetTrigger("hide");
+        yield return new WaitForSeconds(0.5f);
+        upgradeCanvas.SetActive(false);
+    }
+
+    public void OnUpgradeButtonDown()
+    {
+        if (money >= selectedMapCube.turretData.costUpgraded)
+        {
+            ChangeMoney(-selectedMapCube.turretData.costUpgraded);
+            selectedMapCube.UpgradeTurret();
+        }
+        else
+        {
+            moneyAnimator.SetTrigger("flicker");
+        }
+        StartCoroutine(HideUpgradeUI());
+    }
+    
+    public void OnDestoryButtonDown()
+    {
+        selectedMapCube.DestroyTurret();
+        StartCoroutine(HideUpgradeUI());
+    }
+}
+
+
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class BulletController : MonoBehaviour
+{
+    public int damage = 50;
+    public float speed = 40;
+    public GameObject explosionEffectPrefab;
+    private Transform target;
+    
+    public void SetTarget(Transform _target)
+    {
+        target = _target;
+    }
+
+    private void Update()
+    {
+        if (target == null)
+        {
+            Die();
+            return;
+        }
+        transform.LookAt(target.position);
+        transform.Translate(Vector3.forward * speed * Time.deltaTime); // 沿着目标方向移动
+    }
+
+    private void OnTriggerEnter(Collider col)
+    {
+        if (col.tag == "Enemy")
+        {   
+            // 子弹击中敌人，敌人受到伤害
+            col.GetComponent<EnemyController>().TakeDamage(damage); 
+            // 生成爆炸特效
+            GameObject effect = GameObject.Instantiate(explosionEffectPrefab, transform.position, transform.rotation);
+            // 销毁特效
+            Destroy(effect, 1);
+            Die();
+            
+        }
+    }
+
+    private void Die()
+    {
+        Destroy(this.gameObject);
+    }
+}
+
+
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+
+public class EnemyController : MonoBehaviour
+{   
+    public float speed = 10.0f;
+    public float hp = 150;
+    private float totalHp;
+    public GameObject explosionEffectPrefab;
+    private Slider hpSlider;
+    private Transform[] positions;
+    private int index = 0;
+    
+    void Start()
+    {   
+        // 获取所有路径点
+        positions = WayPoints.positions;
+        // 初始化血条组件
+        totalHp = hp;
+        hpSlider = GetComponentInChildren<Slider>();
+    }
+    
+    void Update()
+    {   
+        // 调用Move方法，每帧移动
+        Move();
+    }
+
+    void Move()
+    {   
+        // 如果index大于positions的长度-1，说明已经到达终点，直接返回
+        if (index > positions.Length - 1) return;
+        // 沿着positions的位置移动，先将目标位置-当前位置，然后归一化得到方向向量，最后乘以速度和时间
+        transform.Translate((positions[index].position - transform.position).normalized * speed * Time.deltaTime);
+        // 如果当前位置和目标位置的距离小于0.2f，说明已经到达目标位置，index+1
+        if (Vector3.Distance(positions[index].position, transform.position) < 0.2f)
+        {
+            index++;
+        }
+        // 如果index大于positions的长度-1，说明已经到达终点，调用ReachDestination
+        if (index > positions.Length - 1)
+        {
+            ReachDestination();
+        }
+    }
+    
+    // 到达终点的处理
+    void ReachDestination()
+    {   
+        GameManager.Instance.Fail();
+        GameObject.Destroy(this.gameObject);
+    }
+    
+    // 当敌人被销毁时，敌人数量-1
+    private void OnDestroy()
+    {
+        EnemySpawner.CountEnemyAlive--;
+    }
+    
+    // 敌人受到伤害逻辑
+    public void TakeDamage(float damage)
+    {
+        if(hp <= 0) return;
+        hp -= damage;
+        hpSlider.value = hp * 1.0f / totalHp;
+        if(hp <= 0)
+        {
+            Die();
+        }
+    }
+    
+    // 敌人死亡逻辑
+    void Die()
+    {   
+        // 生成爆炸特效
+        GameObject effect = GameObject.Instantiate(explosionEffectPrefab, transform.position, transform.rotation);
+        Destroy(effect, 1.5f);
+        Destroy(this.gameObject);
+    }
+}
+
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class EnemySpawner : MonoBehaviour
+{   
+    public static int CountEnemyAlive = 0;
+    public Wave[] waves;
+    public Transform START;
+    public float waveRate = 0.2f;
+    private Coroutine coroutine;
+    
+    private void Start()
+    {   
+        // 启动协程
+        coroutine = StartCoroutine(SpawnEnemy());
+    }
+
+    public void Stop()
+    {
+        StopCoroutine(coroutine);
+    }
+    
+    // 协程，生成敌人
+    IEnumerator SpawnEnemy()
+    {
+        foreach (Wave wave in waves)
+        {
+            for(int i=0;i<wave.count;i++)
+            {      
+                // 在START的位置生成一个敌人enemyPrefab，Quaternion.identity表示不旋转
+                GameObject.Instantiate(wave.enemyPrefab, START.position, Quaternion.identity);
+                CountEnemyAlive++;
+                // 每隔1秒生成一个敌人
+                if (i != wave.count - 1)
+                {
+                    yield return new WaitForSeconds(wave.rate);
+                }
+                 
+            }
+            while (CountEnemyAlive > 0)
+            {
+                yield return 0;
+            }
+            yield return new WaitForSeconds(waveRate);
+        }
+        
+        while(CountEnemyAlive > 0)
+        {
+            yield return 0;
+        }
+        GameManager.Instance.Win();
+    }
+}
+
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+
+public class GameMenu : MonoBehaviour
+{
+    public void OnStartButton()
+    {
+        SceneManager.LoadScene(1);
+    }
+
+    public void OnQuitButton()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
+    }
+}
+
+
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.EventSystems;
+
+public class MapCubeController : MonoBehaviour
+{   
+    [HideInInspector] // 在Inspector面板中隐藏
+    public bool isUpgraded = false; // 是否已经升级
+    
+    public TurretData turretData;
+    [HideInInspector]
+    public GameObject turretGo; // 保存当前Cube身上的炮台
+    public GameObject buildEffect; // 建造炮台的特效
+    private Renderer renderer; // 保存Cube的Renderer组件
+
+    private void Start()
+    {
+        renderer = GetComponent<Renderer>();
+    }
+
+    public void BuildTurret(TurretData turretData)
+    {
+        this.turretData = turretData;
+        // 在Cube上建造炮台
+        turretGo = GameObject.Instantiate(turretData.turretPrefab, transform.position, Quaternion.identity);
+        isUpgraded = false;
+        // 创建炮台特效，释放特效后销毁
+        GameObject effect = GameObject.Instantiate(buildEffect, transform.position, Quaternion.identity);
+        Destroy(effect, 1.5f);
+    }
+
+    public void UpgradeTurret()
+    {
+        Destroy(turretGo);
+        // 在Cube上建造炮台
+        turretGo = GameObject.Instantiate(turretData.turretUpgradedPrefab, transform.position, Quaternion.identity);
+        isUpgraded = true;
+        // 创建炮台特效，释放特效后销毁
+        GameObject effect = GameObject.Instantiate(buildEffect, transform.position, Quaternion.identity);
+        Destroy(effect, 1.5f);
+    }
+
+    public void DestroyTurret()
+    {
+        Destroy(turretGo);
+        isUpgraded = false;
+        turretGo = null;
+        turretData = null;
+        // 创建炮台特效，释放特效后销毁
+        GameObject effect = GameObject.Instantiate(buildEffect, transform.position, Quaternion.identity);
+        Destroy(effect, 1.5f);
+    }
+    
+    private void OnMouseEnter()
+    {
+        if (turretGo == null &&  !EventSystem.current.IsPointerOverGameObject())
+        {
+            renderer.material.color = Color.red;
+        }
+    }
+
+    private void OnMouseExit()
+    {
+        renderer.material.color = Color.white;
+    }
+}
+
+
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class Turret : MonoBehaviour
+{   
+    private List<GameObject> enemies = new List<GameObject>(); // 保存进入攻击范围的敌人
+    private void OnTriggerEnter(Collider col)
+    {
+        if(col.tag == "Enemy")
+        {   
+            // 将进入攻击范围的敌人加入到enemies列表中
+            enemies.Add(col.gameObject);
+        }
+    }
+
+    private void OnTriggerExit(Collider col)
+    {
+        if (col.tag == "Enemy")
+        {
+            // 将离开攻击范围的敌人从enemies列表中移除
+            enemies.Remove(col.gameObject);
+        }
+    }
+    
+    public float attackRateTime = 1; // 攻击间隔，每隔几秒攻击一次
+    private float timer = 0; // 计时器
+
+    public GameObject bulletPrefab; // 攻击的武器
+    public Transform firePosition; // 发射位置
+    public Transform head;
+    
+    public bool useLaser = false;  // 是否使用激光炮
+    public float damageRate = 70;  // 激光炮每秒伤害
+    public LineRenderer laserRenderer; // 激光炮的LineRenderer
+    public GameObject laserEffect; // 激光炮的特效
+    
+    void Start()
+    {
+        timer = attackRateTime;
+    } 
+    
+    void Update()
+    {
+        if (enemies.Count > 0 && enemies[0] != null)
+        {
+            Vector3 targetPosition = enemies[0].transform.position;
+            targetPosition.y = head.position.y;
+            head.LookAt(targetPosition);
+        }
+        
+        // 如果不使用激光炮
+        if (useLaser == false)
+        {
+            timer += Time.deltaTime;
+            if (enemies.Count > 0 && timer >= attackRateTime)
+            {
+                timer = 0;
+                Attack();
+            }
+        }
+        // 如果使用激光炮
+        else if(enemies.Count > 0)
+        {
+            if (laserRenderer.enabled == false)
+            {
+                laserRenderer.enabled = true;
+            }
+            laserEffect.SetActive(true);
+            if (enemies[0] == null)
+            {
+                UpdateEnemies();
+            }
+            // 如果enemies列表中有敌人，进行攻击
+            if (enemies.Count > 0)
+            {
+                laserRenderer.SetPositions(new Vector3[]{firePosition.position, enemies[0].transform.position});
+                enemies[0].GetComponent<EnemyController>().TakeDamage(damageRate * Time.deltaTime);
+                laserEffect.transform.position = enemies[0].transform.position;
+                Vector3 pos = transform.position;
+                pos.y = enemies[0].transform.position.y;
+                laserEffect.transform.LookAt(pos);
+            }
+        }
+        // 如果enemies列表中没有敌人，不进行攻击
+        else
+        {   
+            laserEffect.SetActive(false);
+            laserRenderer.enabled = false;
+        }
+
+    }
+
+    void Attack()
+    {
+        if (enemies[0] == null)
+        {
+            UpdateEnemies();
+        }
+
+        if (enemies.Count > 0)
+        {
+            GameObject bullet = GameObject.Instantiate(bulletPrefab, firePosition.position, firePosition.rotation);
+            bullet.GetComponent<BulletController>().SetTarget(enemies[0].transform);
+        }
+        else
+        {
+            timer = attackRateTime;
+        }
+    }
+    
+    // 更新enemies列表，移除空对象
+    void UpdateEnemies()
+    {   
+        enemies.RemoveAll(item => item == null);
+    }
+}
+
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+[System.Serializable]
+public class TurretData
+{
+    public GameObject turretPrefab;
+    public int cost;
+    public GameObject turretUpgradedPrefab;
+    public int costUpgraded;
+    public TurretType type;
+}
+
+public enum TurretType
+{
+    LaserTurret,
+    MissileTurret,
+    StandardTurret
+}
+
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class ViewController : MonoBehaviour
+{   
+    public float speed = 25.0f;
+    public float mouseSpeed = 360.0f;
+    // Update is called once per frame
+    void Update()
+    {   
+        // 获取水平、垂直方向，鼠标滚轮的输入
+        float h = Input.GetAxis("Horizontal");
+        float v = Input.GetAxis("Vertical");
+        float mouse = Input.GetAxis("Mouse ScrollWheel");
+        // 沿着水平、垂直方向移动，乘以速度和时间
+        transform.Translate(new Vector3(h, 0, v) * speed * Time.deltaTime, Space.World);
+        // 沿着垂直方向移动，乘以鼠标滚轮的值和速度和时间
+        transform.Translate(new Vector3(0, -mouse, 0) * mouseSpeed * Time.deltaTime, Space.World);
+    }
+}
+
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+[System.Serializable]
+public class Wave
+{   
+    // 敌人的预制体
+    public GameObject enemyPrefab;
+    // 敌人的数量
+    public int count;
+    // 生成敌人的速率
+    public float rate;
+}
+
+
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class WayPoints : MonoBehaviour
+{
+    public static Transform[] positions;
+    
+    // 在脚本第一次加载到内存时被调用，并且只会被调用一次。这通常用于初始化脚本的变量和设置，而不会依赖于游戏对象的激活状态。
+    private void Awake()
+    {
+        positions = new Transform[transform.childCount];
+        for (int i = 0; i < positions.Length; i++)
+        {
+            positions[i] = transform.GetChild(i);
+        }
+    }
+}
+
